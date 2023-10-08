@@ -1,21 +1,20 @@
-# This is a sample Python script.
-from typing import List
-
-# Press Shift+F10 to execute it or replace it with your code.
-# Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
+# This is a script to import your last played game to a Google sheet
 
 import requests
 import json
 from datetime import datetime
 import tzlocal
 import gspread
+import sys
+import os
+import time
 
 # Define stats to track as defined in riot API
 STATISTICS_LIST = {"kills", "deaths", "assists", "totalDamageDealtToChampions", "totalDamageTaken", "wardsPlaced",
                    "wardsKilled", "visionWardsBoughtInGame", "goldEarned", "totalMinionsKilled", "neutralMinionsKilled"}
 
 # Define stats to be tracked on the sheet itself
-# This list is only different if cs is tracked, as cs is comprised of totalMinionsKilled and neutralMinionsKilled
+# This list is only different if cs is tracked, as cs is composed of totalMinionsKilled and neutralMinionsKilled
 DISPLAY_STATS = ["champion", "kills", "deaths", "assists", "totalDamageDealtToChampions", "totalDamageTaken",
                  "wardsPlaced",
                  "wardsKilled", "visionWardsBoughtInGame", "goldEarned", "cs"]
@@ -41,7 +40,11 @@ lockfile = f'{config['league install']}/lockfile'
 # gspread setup, no need to change
 # have your credentials.json in %APPDATA%/gspread/
 # C:\Users\<User>\AppData\Roaming\gspread
-GC = gspread.oauth()
+if getattr(sys, 'frozen', False):
+    credentials = os.path.join(sys._MEIPASS, 'credentials.json')
+else:
+    credentials = 'credentials.json'
+GC = gspread.oauth(credentials_filename=credentials, authorized_user_filename='authorized_user.json')
 SH = GC.open(spreadsheetname)
 WORKSHEET = SH.worksheet(worksheet_name)
 
@@ -68,6 +71,8 @@ full_game_json: dict = request.json()
 
 # import statistics from json
 statistics = {}
+outcome = 'Draw'
+side = 'undefined'
 for i in full_game_json['participantIdentities']:
     if i['player']['summonerName'] in player_list:
         name = i['player']['summonerName']
@@ -112,7 +117,7 @@ statistics['game'] = {}
 statistics['game']['gameTime'] = round(full_game_json['gameDuration'] / 60, 2)
 start_time_unix = float(full_game_json['gameCreation']) / 1000
 local_timezone = tzlocal.get_localzone()
-local_time = datetime.fromtimestamp(start_time_unix, tz=local_timezone)
+local_time: datetime = datetime.fromtimestamp(start_time_unix, tz=local_timezone)
 date = local_time.strftime('%d-%m-%Y')
 ToD = local_time.strftime('%H:%M')
 statistics['game']['start'] = ToD
@@ -138,7 +143,7 @@ for role in player_list:
             temp_vr.append(statistics[role][DISPLAY_STATS[i]])
         values_role[role] = temp_vr
     else:
-        temp_vr = ['']*len(DISPLAY_STATS)
+        temp_vr = [''] * len(DISPLAY_STATS)
         values_role[role] = temp_vr
 
 # Create List of Values for the sheet and push them to the data sheet
@@ -152,8 +157,5 @@ SH.values_append(f'{worksheet_name}!A1', {'valueInputOption': 'USER_ENTERED'},
 
 # Print Stats
 print(json.dumps(statistics, indent=2))
-
-# Optional: Output player and game stats as <gameId>.json
-# stroutfile = f'{game_ID}.json'
-# with open(stroutfile,'w') as outfile:
-#    outfile.write(json.dumps(statistics, indent=2))
+print('Successfully added last game')
+time.sleep(5)
