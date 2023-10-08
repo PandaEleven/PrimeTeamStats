@@ -1,4 +1,5 @@
 # This is a sample Python script.
+from typing import List
 
 # Press Shift+F10 to execute it or replace it with your code.
 # Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
@@ -8,56 +9,49 @@ import json
 from datetime import datetime
 import tzlocal
 import gspread
-from openpyxl.utils import column_index_from_string
 
-# User will always be riot
-USER = 'riot'
-# Directory of lockfile is {Install directory of League of Legends}/lockfile
-LOCKFILE = 'C:/Riot Games/League of Legends/lockfile'
-# Enter the player names
-TOP = 'QUΑCK'
-JUNGLE = 'BlackSilbergift'
-MID = 'Shenycrane'
-ADC = 'Pinky Panda'
-SUPPORT = 'FridaHansdotter'
-# Enter name of the Spreadsheet
-SPREADSHEETNAME = 'Mew Gaming 4'
-# Enter name of the data sheet (create one if there isn't already)
-# Make sure the data sheet has columns up to BH
-SHEETNAME = 'Data'
-# Columns for the Roles
-ROLE_LOCATION = {TOP: 'F', JUNGLE: 'Q', MID: 'AB', ADC: 'AM', SUPPORT: 'AX'}
 # Define stats to track as defined in riot API
 STATISTICS_LIST = {"kills", "deaths", "assists", "totalDamageDealtToChampions", "totalDamageTaken", "wardsPlaced",
                    "wardsKilled", "visionWardsBoughtInGame", "goldEarned", "totalMinionsKilled", "neutralMinionsKilled"}
+
 # Define stats to be tracked on the sheet itself
 # This list is only different if cs is tracked, as cs is comprised of totalMinionsKilled and neutralMinionsKilled
 DISPLAY_STATS = ["champion", "kills", "deaths", "assists", "totalDamageDealtToChampions", "totalDamageTaken",
                  "wardsPlaced",
                  "wardsKilled", "visionWardsBoughtInGame", "goldEarned", "cs"]
+
 # Location of Datadragon champion.json
-DATADRAGON_CHAMPIONS = "E:/primeteam/champion.json"
+DATADRAGON_CHAMPIONS = "champion.json"
+
+# User will always be riot
+USER = 'riot'
+
+# Load config from config.json
+with open('config.json') as f:
+    config = json.load(f)
+top = config['top']
+jgl = config['jgl']
+mid = config['mid']
+adc = config['adc']
+sup = config['sup']
+worksheet_name = config['workbook name']
+spreadsheetname = config['spreadsheet name']
+lockfile = f'{config['league install']}/lockfile'
+
 # gspread setup, no need to change
 # have your credentials.json in %APPDATA%/gspread/
 # C:\Users\<User>\AppData\Roaming\gspread
 GC = gspread.oauth()
-SH = GC.open(SPREADSHEETNAME)
-WORKSHEET = SH.worksheet(SHEETNAME)
-
-# Function to add array of values to lowest, non-full line at specific column
-def append_stats(column, values, spreadsheet, sheetname):
-    update_row = len(spreadsheet.worksheet(sheetname).col_values(column_index_from_string(column))) + 1
-    spreadsheet.values_update(f'{sheetname}!{column}{update_row}', {'valueInputOption': 'USER_ENTERED'},
-                              {'values': values})
-
+SH = GC.open(spreadsheetname)
+WORKSHEET = SH.worksheet(worksheet_name)
 
 # Create Player list
-player_list = [TOP, JUNGLE, MID, ADC, SUPPORT]
+player_list = [top, jgl, mid, adc, sup]
 role_list = ['TOP', 'JUNGLE', 'MID', 'ADC', 'SUPPORT']
 
 # Get port and password from lockfile
-with open(LOCKFILE) as lockfile:
-    lockfile_contents = lockfile.read().split(':')
+with open(lockfile) as lf:
+    lockfile_contents: list[str] = lf.read().split(':')
     port = lockfile_contents[2]
     pw = lockfile_contents[3]
 
@@ -130,22 +124,31 @@ else:
 statistics['game']['outcome'] = outcome
 statistics['game']['side'] = side
 
-# Get general game stats and append them to the sheet
-values_game = [
-    [statistics['game']['date'], statistics['game']['start'], statistics['game']['side'], statistics['game']['outcome'],
-     statistics['game']['gameTime']]]
-append_stats('A', values_game, SH, SHEETNAME)
+# Get general game stats
+values_game = [statistics['game']['date'], statistics['game']['start'], statistics['game']['side'],
+               statistics['game']['outcome'],
+               statistics['game']['gameTime']]
 
-# Get player stats and append them to the sheet
+# Get player stats, create empty field for missing players
 values_role = {}
 for role in player_list:
     if role in statistics:
         temp_vr = []
         for i in range(len(DISPLAY_STATS)):
             temp_vr.append(statistics[role][DISPLAY_STATS[i]])
-        values_role[role] = [temp_vr]
-for role in values_role:
-    append_stats(ROLE_LOCATION[role], values_role[role], SH, SHEETNAME)
+        values_role[role] = temp_vr
+    else:
+        temp_vr = ['']*len(DISPLAY_STATS)
+        values_role[role] = temp_vr
+
+# Create List of Values for the sheet and push them to the data sheet
+sheet_values = values_game
+for i in values_role:
+    sheet_values = sheet_values + [*values_role[i]]
+sheet_values = [sheet_values]
+print(sheet_values)
+SH.values_append(f'{worksheet_name}!A1', {'valueInputOption': 'USER_ENTERED'},
+                 {'values': sheet_values})
 
 # Print Stats
 print(json.dumps(statistics, indent=2))
